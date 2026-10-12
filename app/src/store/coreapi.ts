@@ -198,6 +198,18 @@ export const useApiStore = defineStore('coreapi', () => {
       'get',
     );
   }
+  // 「我的抖音」：本地可播放视频的信息流
+  async function FeedList(params: Record<string, any>) {
+    return http.request<any, Response<any>>('/api/video/feed', 'get', params);
+  }
+  // 「我的抖音」：账号列表和各分类数量，传 authorId 时只统计该博主
+  async function FeedSummary(cookieId?: string, authorId?: string) {
+    return http.request<any, Response<any>>('/api/video/feed/summary', 'get', { cookieId, authorId });
+  }
+  // 「我的抖音」：博主列表
+  async function FeedAuthors(params: Record<string, any>) {
+    return http.request<any, Response<any>>('/api/video/feed/authors', 'get', params);
+  }
   //cookies
   async function CookiePageList(param: object) {
     return http.request<any, Response<any>>('/api/config/paged', 'post_json', param).then(r => {
@@ -774,6 +786,9 @@ export const useApiStore = defineStore('coreapi', () => {
     AuthorVideoPageList,
     AuthorVideoTags,
     AuthorVideoProfile,
+    FeedList,
+    FeedSummary,
+    FeedAuthors,
     CookiePageList,
     CookieList,
     FollowList,

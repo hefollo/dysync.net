@@ -102,6 +102,146 @@ namespace dy.net.Controllers
         }
 
         /// <summary>
+        /// 「我的抖音」信息流：分页返回本地可播放的视频
+        /// </summary>
+        [Authorize]
+        [HttpGet("feed")]
+        public async Task<IActionResult> GetFeedAsync([FromQuery] DouyinFeedRequestDto dto)
+        {
+            var (list, totalCount) = await douyinVideoService.GetFeedAsync(dto);
+            return ApiResult.Success(new
+            {
+                data = list,
+                total = totalCount,
+                pageIndex = dto.PageIndex,
+                pageSize = dto.PageSize
+            });
+        }
+
+        /// <summary>
+        /// 「我的抖音」页头部的账号列表和各分类数量
+        /// </summary>
+        [Authorize]
+        [HttpGet("feed/summary")]
+        public async Task<IActionResult> GetFeedSummaryAsync([FromQuery] string cookieId, [FromQuery] string authorId = null)
+        {
+            return ApiResult.Success(await douyinVideoService.GetFeedSummaryAsync(cookieId, authorId));
+        }
+
+        /// <summary>
+        /// 「我的抖音」博主列表：按博主汇总本地可播放的视频
+        /// </summary>
+        [Authorize]
+        [HttpGet("feed/authors")]
+        public async Task<IActionResult> GetFeedAuthorsAsync([FromQuery] DouyinFeedAuthorRequestDto dto)
+        {
+            var (list, totalCount) = await douyinVideoService.GetFeedAuthorsAsync(dto);
+            return ApiResult.Success(new
+            {
+                data = list,
+                total = totalCount,
+                pageIndex = dto.PageIndex,
+                pageSize = dto.PageSize
+            });
+        }
+
+        /// <summary>
+        /// 视频封面：优先用本地保存的封面文件，没有时跳转到抖音的封面地址。
+        /// 和播放接口一样允许匿名，因为 img 标签带不了登录头
+        /// </summary>
+        [AllowAnonymous]
+        [HttpGet("cover/{vid}")]
+        public async Task<IActionResult> GetCover([FromRoute] string vid)
+        {
+            var video = await douyinVideoService.GetById(vid);
+            if (video == null)
+                return NotFound();
+
+            return LocalImageOrRedirect(FindLocalCover(video), video.VideoCoverUrl);
+        }
+
+        /// <summary>
+        /// 作者头像：优先用本地保存的头像文件，没有时跳转到抖音的头像地址
+        /// </summary>
+        [AllowAnonymous]
+        [HttpGet("avatar/{vid}")]
+        public async Task<IActionResult> GetAvatar([FromRoute] string vid)
+        {
+            var video = await douyinVideoService.GetById(vid);
+            if (video == null)
+                return NotFound();
+
+            return LocalImageOrRedirect(
+                IsExistingImage(video.AuthorAvatar) ? video.AuthorAvatar : null,
+                video.AuthorAvatarUrl);
+        }
+
+        private IActionResult LocalImageOrRedirect(string localPath, string remoteUrl)
+        {
+            if (localPath != null)
+            {
+                Response.Headers["Cache-Control"] = "private, max-age=86400";
+                return PhysicalFile(Path.GetFullPath(localPath), GetImageContentType(localPath));
+            }
+
+            if (Uri.TryCreate(remoteUrl, UriKind.Absolute, out var uri)
+                && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            {
+                return Redirect(remoteUrl);
+            }
+
+            return NotFound();
+        }
+
+        /// <summary>
+        /// 封面文件：数据库里记录的路径，或者视频旁边按命名规则保存的 poster 图
+        /// </summary>
+        private static string FindLocalCover(DouyinVideo video)
+        {
+            if (IsExistingImage(video.VideoCoverSavePath))
+                return video.VideoCoverSavePath;
+
+            if (string.IsNullOrWhiteSpace(video.VideoSavePath))
+                return null;
+
+            try
+            {
+                var directory = Path.GetDirectoryName(video.VideoSavePath);
+                if (string.IsNullOrEmpty(directory))
+                    return null;
+
+                var sibling = Path.Combine(directory, Path.GetFileNameWithoutExtension(video.VideoSavePath) + "-poster.jpg");
+                return IsExistingImage(sibling) ? sibling : null;
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+        }
+
+        private static bool IsExistingImage(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            var extension = Path.GetExtension(path).ToLowerInvariant();
+            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".webp")
+                return false;
+
+            return System.IO.File.Exists(path);
+        }
+
+        private static string GetImageContentType(string path)
+        {
+            return Path.GetExtension(path).ToLowerInvariant() switch
+            {
+                ".png" => "image/png",
+                ".webp" => "image/webp",
+                _ => "image/jpeg"
+            };
+        }
+
+        /// <summary>
         /// 查询统计数据
         /// </summary>
         /// <returns></returns>

@@ -224,6 +224,100 @@ namespace dy.net.service
         }
 
         /// <summary>
+        /// 「我的抖音」信息流
+        /// </summary>
+        public async Task<(List<DouyinFeedItemDto> list, int totalCount)> GetFeedAsync(DouyinFeedRequestDto dto)
+        {
+            dto ??= new DouyinFeedRequestDto();
+            dto.PageIndex = Math.Max(1, dto.PageIndex);
+            dto.PageSize = Math.Clamp(dto.PageSize, 1, 60);
+            dto.Keyword = dto.Keyword?.Trim();
+
+            var (videos, totalCount) = await _dyCollectVideoRepository.GetFeedPagedAsync(dto);
+            var list = videos.Select(video =>
+            {
+                var type = DouyinFeedTypes.FromVideoType(video.ViedoType);
+                return new DouyinFeedItemDto
+                {
+                    Id = video.Id,
+                    Title = video.VideoTitle,
+                    Author = video.Author,
+                    AuthorId = video.AuthorId,
+                    Type = type,
+                    TypeName = DouyinFeedTypes.GetName(type),
+                    CreateTime = video.CreateTime,
+                    SyncTime = video.SyncTime,
+                    Resolution = video.Resolution,
+                    FileSize = video.FileSize,
+                    IsImagePost = video.IsMergeVideo == 1
+                };
+            }).ToList();
+            return (list, totalCount);
+        }
+
+        /// <summary>
+        /// 「我的抖音」页头部的账号列表和各分类数量
+        /// </summary>
+        public async Task<DouyinFeedSummaryDto> GetFeedSummaryAsync(string cookieId, string authorId = null)
+        {
+            var counts = await _dyCollectVideoRepository.GetFeedTypeCountsAsync(cookieId, authorId);
+            int Count(string type) => counts
+                .Where(x => DouyinFeedTypes.FromVideoType(x.Key) == type)
+                .Sum(x => x.Value);
+
+            var cookies = await douyinCookieRepository.GetAllAsync();
+            return new DouyinFeedSummaryDto
+            {
+                Accounts = cookies
+                    .Select(x => new DouyinFeedAccountDto { Id = x.Id, Name = x.UserName })
+                    .ToList(),
+                Total = counts.Values.Sum(),
+                Favorite = Count(DouyinFeedTypes.Favorite),
+                Collect = Count(DouyinFeedTypes.Collect),
+                Follow = Count(DouyinFeedTypes.Follow),
+                Mix = Count(DouyinFeedTypes.Mix),
+                Series = Count(DouyinFeedTypes.Series),
+                Authors = await _dyCollectVideoRepository.GetFeedAuthorCountAsync(cookieId)
+            };
+        }
+
+        /// <summary>
+        /// 「我的抖音」博主列表：每个博主本地有多少个可播放的视频
+        /// </summary>
+        public async Task<(List<DouyinFeedAuthorDto> list, int totalCount)> GetFeedAuthorsAsync(DouyinFeedAuthorRequestDto dto)
+        {
+            dto ??= new DouyinFeedAuthorRequestDto();
+            dto.PageIndex = Math.Max(1, dto.PageIndex);
+            dto.PageSize = Math.Clamp(dto.PageSize, 1, 60);
+
+            IEnumerable<DouyinFeedAuthorDto> authors = await _dyCollectVideoRepository.GetFeedAuthorsAsync(dto.CookieId);
+
+            var keyword = dto.Keyword?.Trim();
+            if (!string.IsNullOrEmpty(keyword))
+            {
+                authors = authors.Where(x =>
+                    x.Name != null && x.Name.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+            }
+
+            switch ((dto.Order ?? string.Empty).ToLowerInvariant())
+            {
+                case "latest":
+                    authors = authors.OrderByDescending(x => x.LatestSyncTime).ThenBy(x => x.AuthorId, StringComparer.Ordinal);
+                    break;
+                case "name":
+                    authors = authors.OrderBy(x => x.Name ?? string.Empty, StringComparer.CurrentCulture).ThenBy(x => x.AuthorId, StringComparer.Ordinal);
+                    break;
+                default:
+                    authors = authors.OrderByDescending(x => x.Count).ThenBy(x => x.AuthorId, StringComparer.Ordinal);
+                    break;
+            }
+
+            var all = authors.ToList();
+            var page = all.Skip((dto.PageIndex - 1) * dto.PageSize).Take(dto.PageSize).ToList();
+            return (page, all.Count);
+        }
+
+        /// <summary>
         /// 关注的博主的视频如果配置为视频标题作为文件名，生成文件名
         /// </summary>
         /// <param name="AuthorId"></param>

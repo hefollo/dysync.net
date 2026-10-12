@@ -64,7 +64,8 @@ const MobileRedirectGuard: NavigationGuard = function (to, from, next) {
     return;
   }
 
-  if (to.path === '/author-videos') {
+  // 这两个是独立的全屏页面，手机上也直接进，不跳回移动端首页
+  if (to.path === '/author-videos' || to.path === '/me') {
     next();
     return;
   }
@@ -189,7 +190,7 @@ const NotFoundGuard: NaviGuard = {
 window.addEventListener('load', () => {
   const currentPath = window.location.pathname;
   const currentHashPath = window.location.hash.split('?')[0];
-  if (currentHashPath === '#/author-videos') return;
+  if (currentHashPath === '#/author-videos' || currentHashPath === '#/me') return;
   const isNonMobile = !isMobile();
 
   // 【新增】：刷新后如果是/mobile路由且非移动端，跳转到/dashboard

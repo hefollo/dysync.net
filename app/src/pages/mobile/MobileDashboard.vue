@@ -347,6 +347,13 @@
         </svg>
         <span>关注</span>
       </div>
+      <div class="nav-item" @click="openMyDouyin">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polygon points="10 8 16 12 10 16 10 8"></polygon>
+        </svg>
+        <span>刷视频</span>
+      </div>
       <div class="nav-item" :class="{ active: activeTab === 'log' }" @click="activeTab = 'log'">
         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -434,6 +441,7 @@
 import { ref, computed, onMounted, onUnmounted, UnwrapRef, reactive, nextTick, watch } from 'vue';
 import { message, Spin, Empty, Tooltip, Modal, Form, FormInstance } from 'ant-design-vue';
 import { useApiStore } from '@/store';
+import { useRouter } from 'vue-router';
 import {
   CloseOutlined,
   SearchOutlined,
@@ -847,6 +855,12 @@ const handleVideoLoadedMetadata = () => {
 
 // ========== 关注列表核心方法 ==========
 // 切换到关注Tab时初始化
+const router = useRouter();
+// 「我的抖音」是独立的全屏页面，从底部导航跳过去
+const openMyDouyin = () => {
+  router.push('/me');
+};
+
 const handleSwitchToFollow = () => {
   activeTab.value = 'follow';
   nextTick(() => {

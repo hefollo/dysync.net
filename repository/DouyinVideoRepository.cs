@@ -124,6 +124,96 @@ namespace dy.net.repository
                 .ToList();
         }
 
+        /// <summary>
+        /// 「我的抖音」信息流：只返回本地有视频文件、可以直接播放的记录
+        /// </summary>
+        public async Task<(List<DouyinVideo> list, int totalCount)> GetFeedPagedAsync(DouyinFeedRequestDto dto)
+        {
+            var skip = (dto.PageIndex - 1) * dto.PageSize;
+
+            if (string.Equals(dto.Order, "random", StringComparison.OrdinalIgnoreCase))
+            {
+                // 跨数据库的随机排序没法稳定翻页，所以只取 id 在内存里按种子洗牌，再取这一页的完整记录
+                var ids = await BuildFeedQuery(dto).Select(x => x.Id).ToListAsync();
+                var pageIds = DouyinFeedTypes.Shuffle(ids, dto.Seed).Skip(skip).Take(dto.PageSize).ToList();
+                if (pageIds.Count == 0)
+                    return (new List<DouyinVideo>(), ids.Count);
+
+                var rows = await GetByIds(pageIds);
+                var byId = rows.ToDictionary(x => x.Id);
+                var ordered = pageIds.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+                return (ordered, ids.Count);
+            }
+
+            var query = BuildFeedQuery(dto);
+            var totalCount = await query.CountAsync();
+            query = string.Equals(dto.Order, "publish", StringComparison.OrdinalIgnoreCase)
+                ? query.OrderBy(x => x.CreateTime, OrderByType.Desc).OrderBy(x => x.Id, OrderByType.Desc)
+                : query.OrderBy(x => x.SyncTime, OrderByType.Desc).OrderBy(x => x.Id, OrderByType.Desc);
+            var list = await query.Skip(skip).Take(dto.PageSize).ToListAsync();
+            return (list, totalCount);
+        }
+
+        /// <summary>
+        /// 各类型可播放视频的数量
+        /// </summary>
+        public async Task<Dictionary<VideoTypeEnum, int>> GetFeedTypeCountsAsync(string cookieId, string authorId = null)
+        {
+            var grouped = await BuildFeedQuery(new DouyinFeedRequestDto { CookieId = cookieId, AuthorId = authorId })
+                .GroupBy(x => x.ViedoType)
+                .Select(x => new { Type = x.ViedoType, Count = SqlFunc.AggregateCount(x.Id) })
+                .ToListAsync();
+            // 类型列允许为空，空值和 0 会映射到同一个枚举值，所以再合并一次
+            return grouped
+                .GroupBy(x => x.Type)
+                .ToDictionary(x => x.Key, x => x.Sum(item => item.Count));
+        }
+
+        public async Task<int> GetFeedAuthorCountAsync(string cookieId)
+        {
+            return await BuildFeedQuery(new DouyinFeedRequestDto { CookieId = cookieId })
+                .Where(x => x.AuthorId != null && x.AuthorId != "")
+                .Select(x => x.AuthorId)
+                .Distinct()
+                .CountAsync();
+        }
+
+        /// <summary>
+        /// 按博主汇总本地可播放的视频。博主数量有限，全部取回后由调用方排序、搜索和分页
+        /// </summary>
+        public async Task<List<DouyinFeedAuthorDto>> GetFeedAuthorsAsync(string cookieId)
+        {
+            return await BuildFeedQuery(new DouyinFeedRequestDto { CookieId = cookieId })
+                .Where(x => x.AuthorId != null && x.AuthorId != "")
+                .GroupBy(x => x.AuthorId)
+                .Select(x => new DouyinFeedAuthorDto
+                {
+                    AuthorId = x.AuthorId,
+                    Name = SqlFunc.AggregateMax(x.Author),
+                    Count = SqlFunc.AggregateCount(x.Id),
+                    LatestSyncTime = SqlFunc.AggregateMax(x.SyncTime),
+                    // id 是递增的雪花 id，最大的就是最近同步的那条，用它取头像和封面
+                    SampleVideoId = SqlFunc.AggregateMax(x.Id)
+                })
+                .ToListAsync();
+        }
+
+        private ISugarQueryable<DouyinVideo> BuildFeedQuery(DouyinFeedRequestDto dto)
+        {
+            // 一个分类最多对应两种视频类型（收藏 = 默认收藏夹 + 自定义收藏夹）
+            var types = DouyinFeedTypes.ToVideoTypes(dto.Type);
+            var firstType = types?[0] ?? default;
+            var secondType = types != null && types.Length > 1 ? types[1] : firstType;
+            return Db.Queryable<DouyinVideo>()
+                // 只下载了图片或音频的记录没有视频文件，播放不了
+                .Where(x => x.VideoSavePath != null && x.VideoSavePath.EndsWith(".mp4"))
+                .WhereIF(types != null, x => x.ViedoType == firstType || x.ViedoType == secondType)
+                .WhereIF(!string.IsNullOrWhiteSpace(dto.CookieId), x => x.CookieId == dto.CookieId)
+                .WhereIF(!string.IsNullOrWhiteSpace(dto.AuthorId), x => x.AuthorId == dto.AuthorId)
+                .WhereIF(!string.IsNullOrWhiteSpace(dto.Keyword),
+                    x => x.VideoTitle.Contains(dto.Keyword) || x.Author.Contains(dto.Keyword));
+        }
+
         private ISugarQueryable<DouyinVideo> BuildAuthorVideoQuery(string authorId, string authorName)
         {
             var query = Db.Queryable<DouyinVideo>();
