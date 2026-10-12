@@ -255,6 +255,40 @@ export const useApiStore = defineStore('coreapi', () => {
   }
 
 
+  // 扫码登录。轮询类请求不显示顶部进度条。
+  const QR_SILENT = { silent: true } as any;
+
+  async function QrLoginStart() {
+    return http.request<any, Response<any>>('/api/config/qr/start', 'post_json', {});
+  }
+
+  async function QrLoginStatus(id: string, qrVersion: number) {
+    return http.request<any, Response<any>>('/api/config/qr/status', 'get', { id, v: qrVersion }, QR_SILENT);
+  }
+
+  async function QrLoginScreenshot(id: string) {
+    return http.request<any, Response<any>>('/api/config/qr/screenshot', 'get', { id }, QR_SILENT);
+  }
+
+  // 把浏览器画面上的点击、拖动、输入转发给后端的扫码浏览器
+  async function QrLoginAction(id: string, action: object) {
+    return http.request<any, Response<any>>(
+      '/api/config/qr/action?id=' + encodeURIComponent(id),
+      'post_json',
+      action,
+      QR_SILENT
+    );
+  }
+
+  async function QrLoginCancel(id: string) {
+    return http.request<any, Response<any>>(
+      '/api/config/qr/cancel?id=' + encodeURIComponent(id),
+      'post_json',
+      {},
+      QR_SILENT
+    );
+  }
+
   async function deleteCookie(id: string) {
     return http.request<any, Response<any>>('/api/config/delete?id=' + id, 'get').then(r => {
       return r;
@@ -719,6 +753,11 @@ export const useApiStore = defineStore('coreapi', () => {
     DelFollow,
     AddFollow,
     CheckTag,
+    QrLoginStart,
+    QrLoginStatus,
+    QrLoginScreenshot,
+    QrLoginAction,
+    QrLoginCancel,
     deleteCookie,
     UpdateConfig,
     apiGetConfig,

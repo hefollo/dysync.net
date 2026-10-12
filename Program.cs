@@ -165,6 +165,8 @@ namespace dy.net
             services.AddSingleton<DatabaseMigrationJobService>();
             services.AddHostedService(provider =>
                 provider.GetRequiredService<DatabaseMigrationJobService>());
+            // 扫码会话保存在内存里，必须是单例
+            services.AddSingleton<DouyinQrLoginService>();
 
             // 仓储和服务注册
             services.AddServicesFromNamespace("dy.net.repository")

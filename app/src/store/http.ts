@@ -54,7 +54,8 @@ function getAuthErrorMessage(authError?: string): string {
 
 http.interceptors.request.use(
   (request: AxiosRequestConfig) => {
-    if (!NProgress.isStarted()) {
+    // 高频轮询请求传 silent: true，避免顶部进度条不停闪动。
+    if (!(request as any).silent && !NProgress.isStarted()) {
       NProgress.start();
     }
 

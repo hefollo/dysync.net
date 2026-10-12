@@ -13,9 +13,12 @@ import {
   StopOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
+  QrcodeOutlined,
 } from '@ant-design/icons-vue';
 import { useApiStore } from '@/store';
 import { message } from 'ant-design-vue';
+import QrLoginModal from './QrLoginModal.vue';
+import type { QrLoginResult } from './QrLoginModal.vue';
 
 import { StarOutlined, StarFilled, StarTwoTone } from '@ant-design/icons-vue';
 const columns = ref([]);
@@ -147,6 +150,24 @@ function cancel() {
 }
 
 const formModel = ref<FormInstance>();
+
+const showQrLogin = ref(false);
+
+// 扫码成功后只回填表单，仍由用户点“确定”走原有的校验和保存流程
+const onQrLoginSuccess = (result: QrLoginResult) => {
+  form.cookies = result.cookie;
+  if (result.secUserId) {
+    form.secUserId = result.secUserId;
+  }
+  if (!form.userName && result.nickname) {
+    form.userName = result.nickname;
+  }
+  if (result.secUserId) {
+    message.success('已填入 Cookie 和 secUserId，确认其他配置后点击确定保存');
+  } else {
+    message.warning('已填入 Cookie，但未能自动获取 secUserId，需要时请手动填写');
+  }
+};
 
 const formLoading = ref(false);
 
@@ -485,6 +506,17 @@ const switchdownCollect = (e: any) => {
       </a-form-item>
       <a-form-item label="Cookie值" name="cookies">
         <a-textarea v-model:value="form.cookies" :rows="rowCount" />
+        <a-form-item-rest>
+          <div class="qr-login-entry">
+            <a-button @click="showQrLogin = true">
+              <template #icon>
+                <QrcodeOutlined />
+              </template>
+              扫码获取
+            </a-button>
+            <span class="qr-login-entry-tip">用抖音 App 扫码，自动填入 Cookie 和 secUserId；扫码不可用时仍可手动粘贴</span>
+          </div>
+        </a-form-item-rest>
       </a-form-item>
 
       <a-form-item label="我的secUserId" name="secUserId">
@@ -602,6 +634,8 @@ const switchdownCollect = (e: any) => {
     </a-form>
   </a-modal>
 
+  <QrLoginModal v-model:visible="showQrLogin" @success="onQrLoginSuccess" />
+
   <a-drawer :title="getDrawerTypeName()+'配置'" v-model:visible="showDrawer" placement="right" width="800px" :z-index="10010" :mask-z-index="10009" @close="closeDrawer" class="common-drawer">
     <template #extra>
       <a-button type="primary" :loading="drawerPagination.loading" @click="saveDrawerData" class="drawer-save-btn">
@@ -716,6 +750,16 @@ const switchdownCollect = (e: any) => {
 .form-item-div-input {
   width: 180px;
   margin-left: 10px;
+}
+.qr-login-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.qr-login-entry-tip {
+  color: #8c96a1;
+  font-size: 12px;
 }
 
 :deep(.ant-input-textarea-input) {

@@ -19,6 +19,7 @@
   - [1. 获取抖音关键信息（必做！同步核心凭证）](#1-获取抖音关键信息必做同步核心凭证)
     - [1.1 提取`Cookie`以及 `sec_uer_id`](#11-提取cookie以及-sec_uer_id)
     - [1.2 提取 博主的`sec_user_id`以及博主的uid](#12-提取-博主的sec_user_id以及博主的uid)
+    - [1.3 扫码获取 Cookie（可选）](#13-扫码获取-cookie可选)
   - [](#)
   - [2. Docker 路径映射与扩展存储](#2-docker-路径映射与扩展存储)
     - [默认数据目录](#默认数据目录)
@@ -79,6 +80,50 @@ Cookie 及 `sec_user_id` 是同步功能的核心，需严格按步骤获取，�
 - **对于想下载博主视频，但是又不想关注博主，需要用到**
 - 1.进入博主主页，按`F12` 点击`Network` 或`网络` 筛选器里面填`/web/aweme/post` 然后切到`预览`或`preview` 展开 json数据结果 找到`aweme_list` 然后随便点开其中一个子项 即可找到`aweme_list[0].author.sec_uid` 这便是博主的uid 。后续在关注列表中，需要手动添加非关注博主同步视频时将会要用到。
 ![获取Cookie步骤](docs/finduser_id.png)
+
+### 1.3 扫码获取 Cookie（可选）
+
+不想按 F12 抓包时，可以在 `DY授权` 页的新增/编辑窗口里点 **扫码获取**：用抖音 App 扫描弹出的二维码并确认，`Cookie` 和 `secUserId` 会自动填入表单，再点确定保存即可。手动粘贴的方式照常可用。
+
+抖音的二维码接口必须由真实浏览器发起，所以扫码功能需要一个 Chromium 内核的浏览器：
+
+- **Windows / 桌面环境运行**：自动使用本机已安装的 Chrome 或 Edge，无需配置。装在非默认位置时用 `QrBrowserPath` 指定可执行文件路径。
+- **Docker 运行**：镜像里不带浏览器，需要额外加一个浏览器容器，并通过环境变量 `QrBrowserUrl` 告诉本程序它的调试地址。在 `docker-compose.yml` 里追加：
+
+```yaml
+services:
+  dysync:
+    # ...原有配置不变，只在 environment 里加一行
+    environment:
+      - QrBrowserUrl=http://127.0.0.1:9222
+
+  dysync-chrome:
+    image: chromedp/headless-shell:latest
+    container_name: dysync-chrome
+    restart: unless-stopped
+    # 与 dysync 共用网络，调试端口只在 dysync 容器内部可见，不要把 9222 映射到宿主机
+    network_mode: "service:dysync"
+    volumes:
+      # 浏览器容器自身没有中文字体，不挂载的话浏览器画面里的中文会显示成方块。
+      # 目录里放任意中文字体文件（.ttf/.otf/.ttc）即可，例如开源的 Noto Sans SC
+      - /vol2/1000/media/dysync/fonts:/usr/share/fonts/truetype/dysync:ro
+```
+
+扫码后需要身份验证时：
+
+手机和服务器不在同一网络（异地、云主机、代理）时，抖音通常会在扫码后要求额外验证。此时弹窗会自动切换到 **浏览器画面**，这是服务器上那个浏览器的实时画面，可以直接操作：
+
+- 在画面上点击、拖动、滚动，选择验证方式；
+- 需要输入验证码时，先点画面里的输入框，再在画面下方的输入栏里输入并点「发送」；
+- 验证通过后会自动继续，取到 `Cookie` 后弹窗关闭。
+
+注意事项：
+
+- 浏览器的调试端口等同于浏览器的完全控制权，不要暴露到局域网或公网。
+- 画面有一点延迟，每次操作后稍等一下再点下一步。抖音的验证方式不保证都能在这里完成，实在不行请改用手动粘贴。
+- 单独重启 `dysync` 容器后，需要把 `dysync-chrome` 也重启一次（它借用的是 `dysync` 的网络）。
+- 没有配置浏览器时点扫码会提示不可用，不影响其他功能。
+
 ---
 
 ## 2. Docker 路径映射与扩展存储
@@ -271,6 +316,8 @@ services:
 18. ✅ 合集、短剧、自定义收藏夹下载。
 
 19. ✅ 增加一个工具dy.cookie.exe在源码根目录，可以快速重置失效cookie,操作说明（一步一步操作即可）。
+
+20. ✅ DY授权页支持扫码获取 Cookie 和 secUserId（需要浏览器，见 1.3）。
 
 
 ## 💖 支持项目

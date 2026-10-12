@@ -29,6 +29,7 @@ namespace dy.net.Controllers
         private readonly DatabaseMigrationService databaseMigrationService;
         private readonly DatabaseMigrationJobService databaseMigrationJobService;
         private readonly ApplicationRestartService applicationRestartService;
+        private readonly DouyinQrLoginService qrLoginService;
 
 
 
@@ -41,8 +42,10 @@ namespace dy.net.Controllers
             DouyinHttpClientService httpClientService,
             DatabaseMigrationService databaseMigrationService,
             DatabaseMigrationJobService databaseMigrationJobService,
-            ApplicationRestartService applicationRestartService)
+            ApplicationRestartService applicationRestartService,
+            DouyinQrLoginService qrLoginService)
         {
+            this.qrLoginService = qrLoginService;
             this.dyCookieService = dyCookieService;
             this.commonService = commonService;
             this.quartzJobService = quartzJobService;
@@ -256,6 +259,56 @@ namespace dy.net.Controllers
             return ApiResult.Success();
         }
 
+
+        /// <summary>
+        /// 开始扫码登录：后台打开抖音登录页，返回会话 id
+        /// </summary>
+        [HttpPost("qr/start")]
+        public IActionResult StartQrLogin()
+        {
+            return ApiResult.Success(qrLoginService.Start());
+        }
+
+        /// <summary>
+        /// 轮询扫码状态。v 为前端已拿到的二维码版本号，版本没变时不重复返回图片
+        /// </summary>
+        [HttpGet("qr/status")]
+        public IActionResult GetQrLoginStatus([FromQuery] string id, [FromQuery] int v = 0)
+        {
+            var status = qrLoginService.GetStatus(id, v);
+            return status == null ? ApiResult.Fail("扫码会话不存在或已结束，请重新获取二维码") : ApiResult.Success(status);
+        }
+
+        /// <summary>
+        /// 扫码浏览器的当前画面，二维码图片取不到或需要查看页面提示时使用
+        /// </summary>
+        [HttpGet("qr/screenshot")]
+        public async Task<IActionResult> GetQrLoginScreenshot([FromQuery] string id)
+        {
+            var image = await qrLoginService.CaptureScreenshotAsync(id);
+            // 包成对象返回：ApiResult.Success(string) 会把字符串当成 message
+            return image == null ? ApiResult.Fail("暂时无法获取浏览器画面") : ApiResult.Success(new { image });
+        }
+
+        /// <summary>
+        /// 把前端在浏览器画面上的点击、拖动、输入转发给扫码浏览器，用于完成抖音的身份验证
+        /// </summary>
+        [HttpPost("qr/action")]
+        public async Task<IActionResult> PerformQrLoginAction([FromQuery] string id, [FromBody] DouyinQrLoginActionDto action)
+        {
+            var done = await qrLoginService.PerformActionAsync(id, action);
+            return done ? ApiResult.Success() : ApiResult.Fail("操作未能发送到浏览器");
+        }
+
+        /// <summary>
+        /// 取消扫码并释放浏览器
+        /// </summary>
+        [HttpPost("qr/cancel")]
+        public IActionResult CancelQrLogin([FromQuery] string id)
+        {
+            qrLoginService.Cancel(id);
+            return ApiResult.Success();
+        }
 
         /// <summary>
         /// 非docker初始化
